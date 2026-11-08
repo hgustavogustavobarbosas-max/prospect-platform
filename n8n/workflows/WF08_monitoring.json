@@ -1,0 +1,143 @@
+{
+  "id": "WF08Monitoring001",
+  "name": "WF08 - Monitoring",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/15 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "3815d44b-f35e-5fdc-a49c-24bb2a82c9df",
+      "name": "A cada 15 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.PROSPECT_API_URL }}/v1/monitoring/summary",
+        "options": {
+          "timeout": 30000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.PROSPECT_API_KEY }}"
+            }
+          ]
+        }
+      },
+      "id": "0bf4e7c2-35f5-5559-bf78-44ebae7a5b4b",
+      "name": "Resumo de saude",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        250,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $input.first().json;\nconst now = new Date().toISOString();\nconst hour = now.slice(0, 13), day = now.slice(0, 10);\nreturn (s.alerts || []).filter(a => a.severity !== 'info').map(a => ({ json: {\n  topic: 'notify_human',\n  payload: { kind: 'monitoring', severity: a.severity, text: `[${a.severity.toUpperCase()}] ${a.message}` },\n  idempotency_key: `monitor-${a.code}-${a.severity === 'critical' ? hour : day}`,\n}}));"
+      },
+      "id": "eb0e18fe-7051-55e4-824a-202e57251fee",
+      "name": "Alertas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PROSPECT_API_URL }}/v1/outbox",
+        "options": {
+          "timeout": 30000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.PROSPECT_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "dc534030-1b2d-5d29-84c2-1cbb32856a9b",
+      "name": "Enfileirar alerta",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        750,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    }
+  ],
+  "connections": {
+    "A cada 15 min": {
+      "main": [
+        [
+          {
+            "node": "Resumo de saude",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resumo de saude": {
+      "main": [
+        [
+          {
+            "node": "Alertas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alertas": {
+      "main": [
+        [
+          {
+            "node": "Enfileirar alerta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Sao_Paulo",
+    "errorWorkflow": "WF00ErrorHdlr001"
+  },
+  "pinData": {}
+}

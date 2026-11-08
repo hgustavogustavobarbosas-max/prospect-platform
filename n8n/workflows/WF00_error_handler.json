@@ -1,0 +1,93 @@
+{
+  "id": "WF00ErrorHdlr001",
+  "name": "WF00 - Error Handler",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "ad73c6d8-e250-57e5-9bb8-c9f88367400b",
+      "name": "Erro em workflow",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const e = $input.first().json;\nconst wf = (e.workflow && e.workflow.name) || 'desconhecido';\nconst node = (e.execution && e.execution.lastNodeExecuted) || '?';\nconst msg = ((e.execution && e.execution.error && e.execution.error.message) || 'sem mensagem').slice(0, 300);\nconst id = (e.execution && e.execution.id) || Date.now();\nreturn [{ json: {\n  topic: 'notify_human',\n  payload: { kind: 'workflow_error', text: `Falha no workflow \"${wf}\" (node \"${node}\"): ${msg}` },\n  idempotency_key: `wf-error-${wf}-${id}`,\n}}];"
+      },
+      "id": "44f6b44b-37e5-5fb5-af3a-2cd683d871e8",
+      "name": "Montar alerta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        250,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PROSPECT_API_URL }}/v1/outbox",
+        "options": {
+          "timeout": 30000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.PROSPECT_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "032c29c0-845f-5735-9e65-d4659a585690",
+      "name": "Enfileirar alerta",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        500,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    }
+  ],
+  "connections": {
+    "Erro em workflow": {
+      "main": [
+        [
+          {
+            "node": "Montar alerta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar alerta": {
+      "main": [
+        [
+          {
+            "node": "Enfileirar alerta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Sao_Paulo"
+  },
+  "pinData": {}
+}

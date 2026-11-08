@@ -1,0 +1,171 @@
+{
+  "id": "WF01Prospect0001",
+  "name": "WF01 - Prospecting",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "e7f69049-ff41-562e-8dd7-18e6edd033c2",
+      "name": "Seg-Sex 08:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// EDITE aqui os pares segmento/regiao do piloto. A trava abaixo impede rodar com o valor padrao.\nconst searches = [\n  { segment: 'barbearia', region: 'REGIAO_A_DEFINIR', max_pages: 3 },\n  { segment: 'estetica',  region: 'REGIAO_A_DEFINIR', max_pages: 3 },\n];\nfor (const s of searches) {\n  if (s.region.includes('A_DEFINIR')) throw new Error('Defina a regiao no node \"Buscas do dia\" (WF01).');\n}\nreturn searches.map(s => ({ json: s }));"
+      },
+      "id": "ce28dd85-c451-55b8-ac5d-9a5244922319",
+      "name": "Buscas do dia",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        250,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PROSPECT_API_URL }}/v1/prospecting/runs",
+        "options": {
+          "timeout": 180000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.PROSPECT_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ segment: $json.segment, region: $json.region, max_pages: $json.max_pages }) }}"
+      },
+      "id": "72909f52-76b8-5846-baea-a4a253353af3",
+      "name": "Executar busca",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        500,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "const runs = $input.all().map(i => i.json);\nconst lines = runs.map(r => `${r.segment}/${r.region}: ${r.created} novos, ${r.duplicates} duplicados (${r.status}${r.error ? ': ' + r.error : ''})`);\nconst problem = runs.some(r => r.status === 'quota' || r.status === 'failed');\nconst day = new Date().toISOString().slice(0, 10);\nreturn [{ json: {\n  topic: 'notify_human',\n  payload: { kind: 'prospecting_summary', text: (problem ? 'ATENCAO prospeccao: ' : 'Prospeccao: ') + lines.join(' | ') },\n  idempotency_key: `prospecting-summary-${day}`,\n}}];"
+      },
+      "id": "0d60fb00-f56f-534e-bd4f-e30a0101411f",
+      "name": "Resumo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        750,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PROSPECT_API_URL }}/v1/outbox",
+        "options": {
+          "timeout": 30000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.PROSPECT_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "1dd1641c-6f84-5f8c-8675-c93cd77244bd",
+      "name": "Enfileirar resumo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1000,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    }
+  ],
+  "connections": {
+    "Seg-Sex 08:00": {
+      "main": [
+        [
+          {
+            "node": "Buscas do dia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscas do dia": {
+      "main": [
+        [
+          {
+            "node": "Executar busca",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Executar busca": {
+      "main": [
+        [
+          {
+            "node": "Resumo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resumo": {
+      "main": [
+        [
+          {
+            "node": "Enfileirar resumo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Sao_Paulo",
+    "errorWorkflow": "WF00ErrorHdlr001"
+  },
+  "pinData": {}
+}

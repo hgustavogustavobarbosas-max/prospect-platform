@@ -1,0 +1,13 @@
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.venv/
+*.sqlite
+.DS_Store
+backups/*.sql.gz
+infra/prometheus/secrets/*
+!infra/prometheus/secrets/.gitkeep
+node_modules/
+web/dist/

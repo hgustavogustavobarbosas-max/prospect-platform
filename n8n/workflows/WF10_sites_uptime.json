@@ -1,0 +1,75 @@
+{
+  "id": "WF10SitesUptime01",
+  "name": "WF10 - Sites Uptime",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/5 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "09e3e841-bf34-56cf-baf8-ff84628ffa4a",
+      "name": "A cada 5 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PROSPECT_API_URL }}/v1/sites/check",
+        "options": {
+          "timeout": 120000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.PROSPECT_API_KEY }}"
+            }
+          ]
+        }
+      },
+      "id": "66f0f48c-d8c6-5b89-afdd-70f43e8672b3",
+      "name": "Verificar sites",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        250,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    }
+  ],
+  "connections": {
+    "A cada 5 min": {
+      "main": [
+        [
+          {
+            "node": "Verificar sites",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Sao_Paulo",
+    "errorWorkflow": "WF00ErrorHdlr001"
+  },
+  "pinData": {}
+}

@@ -1,0 +1,166 @@
+name: prospect-platform
+
+x-n8n-common: &n8n-common
+  image: n8nio/n8n:${N8N_VERSION:-latest}
+  restart: unless-stopped
+  environment:
+    DB_TYPE: postgresdb
+    DB_POSTGRESDB_HOST: postgres
+    DB_POSTGRESDB_PORT: 5432
+    DB_POSTGRESDB_DATABASE: n8n
+    DB_POSTGRESDB_USER: ${POSTGRES_USER}
+    DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD}
+    N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+    N8N_HOST: ${N8N_HOST}
+    N8N_PORT: 5678
+    N8N_SECURE_COOKIE: "false"   # apenas local (http). Em producao use HTTPS e remova.
+    WEBHOOK_URL: ${N8N_WEBHOOK_URL}
+    GENERIC_TIMEZONE: ${TZ}
+    TZ: ${TZ}
+    N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+    # modo fila: o processo principal enfileira e os workers executam (retry/escala/isolamento)
+    EXECUTIONS_MODE: queue
+    QUEUE_BULL_REDIS_HOST: redis
+    OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS: "true"
+    # usados pelos workflows via $env
+    PROSPECT_API_URL: http://api:8000
+    PROSPECT_API_KEY: ${SERVICE_API_KEY}
+    N8N_WEBHOOK_SECRET: ${N8N_WEBHOOK_SECRET}
+    NOTIFY_WEBHOOK_URL: ${NOTIFY_WEBHOOK_URL:-}
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+    api:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init-n8n.sh:/docker-entrypoint-initdb.d/init-n8n.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: ./api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/1  # rate limit compartilhado entre os workers da API
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${WEB_CONCURRENCY:-2}"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  n8n:
+    <<: *n8n-common
+    command: start
+    volumes:
+      - n8ndata:/home/node/.n8n
+      - ./n8n/workflows:/workflows:ro
+    ports:
+      - "127.0.0.1:5678:5678"
+
+  # Executa os workflows (modo fila via Redis). Escale com: docker compose up -d --scale n8n-worker=2
+  n8n-worker:
+    <<: *n8n-common
+    command: worker --concurrency=5
+
+  web:
+    build: ./web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3000:80"
+
+  # Backup diario (dump comprimido do banco da aplicacao e do n8n) com retencao
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+    volumes:
+      - ./backups:/backups
+      - ./scripts/backup.sh:/backup.sh:ro
+    entrypoint: ["sh", "/backup.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # --- opcionais: docker compose --profile observability up -d ---
+  prometheus:
+    profiles: ["observability"]
+    image: prom/prometheus:v2.55.1
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/prometheus/secrets:/etc/prometheus/secrets:ro
+    ports:
+      - "127.0.0.1:9090:9090"
+
+  grafana:
+    profiles: ["observability"]
+    image: grafana/grafana:11.3.0
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-troque-esta-senha}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafanadata:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3001:3000"
+
+  uptime-kuma:
+    profiles: ["observability"]
+    image: louislam/uptime-kuma:1
+    volumes:
+      - kumadata:/app/data
+    ports:
+      - "127.0.0.1:3002:3001"
+
+volumes:
+  pgdata:
+  redisdata:
+  n8ndata:
+  grafanadata:
+  kumadata:

@@ -1,0 +1,22 @@
+{
+  "title": "Prospect Platform",
+  "uid": "prospect-overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    { "id": 1, "type": "timeseries", "title": "Requisicoes por segundo (por status)", "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "sum by (status) (rate(http_requests_total[5m]))" }] },
+    { "id": 2, "type": "timeseries", "title": "Latencia p95 por rota (s)", "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "histogram_quantile(0.95, sum by (le, route) (rate(http_request_seconds_bucket[5m])))" }] },
+    { "id": 3, "type": "timeseries", "title": "Outbox por status", "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "outbox_events" }] },
+    { "id": 4, "type": "stat", "title": "Conversas aguardando humano", "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "open_handoffs" }] }
+  ]
+}

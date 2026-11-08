@@ -1,0 +1,143 @@
+{
+  "id": "WF11Billing000001",
+  "name": "WF11 - Billing",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "id": "10b5577e-79bb-5fc1-98a2-1efadf6f7dd2",
+      "name": "Diario 09:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PROSPECT_API_URL }}/v1/billing/run",
+        "options": {
+          "timeout": 120000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.PROSPECT_API_KEY }}"
+            }
+          ]
+        }
+      },
+      "id": "e375cc0b-2ff2-5fc4-9ab1-129669866a2e",
+      "name": "Rodar cobrancas",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        250,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "const r = $input.first().json;\nif (!(r.charges_created || r.overdue_notified || r.upsell_notified)) return [];\nconst day = new Date().toISOString().slice(0, 10);\nreturn [{ json: {\n  topic: 'notify_human',\n  payload: { kind: 'billing', text: `Cobrancas: ${r.charges_created} geradas, ${r.overdue_notified} alertas de atraso, ${r.upsell_notified} oportunidades de upsell.` },\n  idempotency_key: `billing-summary-${day}`,\n}}];"
+      },
+      "id": "7c79d7b7-25a7-5fc0-a80b-d736d294faab",
+      "name": "Resumo se houve",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PROSPECT_API_URL }}/v1/outbox",
+        "options": {
+          "timeout": 30000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.PROSPECT_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "deffd95a-161d-57c2-b2fe-4e3244b9c2cc",
+      "name": "Enfileirar resumo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        750,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    }
+  ],
+  "connections": {
+    "Diario 09:00": {
+      "main": [
+        [
+          {
+            "node": "Rodar cobrancas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rodar cobrancas": {
+      "main": [
+        [
+          {
+            "node": "Resumo se houve",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resumo se houve": {
+      "main": [
+        [
+          {
+            "node": "Enfileirar resumo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Sao_Paulo",
+    "errorWorkflow": "WF00ErrorHdlr001"
+  },
+  "pinData": {}
+}

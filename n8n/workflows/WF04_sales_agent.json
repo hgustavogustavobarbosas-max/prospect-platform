@@ -1,0 +1,196 @@
+{
+  "id": "WF04SalesAgent001",
+  "name": "WF04 - Sales Agent",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wf04-inbound",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "0407850d-5172-56b8-96e8-befc85cf3f06",
+      "name": "Mensagem recebida",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        100
+      ],
+      "webhookId": "066105cc-77a2-569d-ab8f-f453da9854b6"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "22dac51c-5fae-5f2b-bac2-d649db9e2012",
+              "leftValue": "={{ $json.headers['x-webhook-secret'] }}",
+              "rightValue": "={{ $env.N8N_WEBHOOK_SECRET }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "40ce043e-943d-5c5c-b688-d5db3776e77c",
+      "name": "Segredo valido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        250,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PROSPECT_API_URL }}/v1/agent/respond",
+        "options": {
+          "timeout": 90000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.PROSPECT_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ lead_id: $json.body.lead_id, text: $json.body.text || '', external_id: $json.body.external_id, message_type: $json.body.message_type || 'text', from_phone: $json.body.from_phone || null }) }}"
+      },
+      "id": "2cfe8553-0de7-5a66-bdfb-e4a906ac5331",
+      "name": "Agente responde",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        500,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, action: $json.action } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "d60234af-b8b5-506c-9d9e-d2d5812159a7",
+      "name": "OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        750,
+        -50
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: false } }}",
+        "options": {
+          "responseCode": 502
+        }
+      },
+      "id": "b8aea0c9-23ea-58a9-9ef3-488346148c4b",
+      "name": "Falha do agente",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        750,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: false } }}",
+        "options": {
+          "responseCode": 401
+        }
+      },
+      "id": "68143ec5-384d-5f06-99e8-2e96c66429cf",
+      "name": "Nao autorizado",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        500,
+        250
+      ]
+    }
+  ],
+  "connections": {
+    "Mensagem recebida": {
+      "main": [
+        [
+          {
+            "node": "Segredo valido?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Segredo valido?": {
+      "main": [
+        [
+          {
+            "node": "Agente responde",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Nao autorizado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agente responde": {
+      "main": [
+        [
+          {
+            "node": "OK",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Falha do agente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Sao_Paulo",
+    "errorWorkflow": "WF00ErrorHdlr001"
+  },
+  "pinData": {}
+}

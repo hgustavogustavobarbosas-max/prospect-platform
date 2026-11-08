@@ -1,0 +1,232 @@
+{
+  "id": "WF05Notify000001",
+  "name": "WF05 - Notifications",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "* * * * *"
+            }
+          ]
+        }
+      },
+      "id": "af41eaeb-b890-5882-9ecb-088d8d810a98",
+      "name": "A cada minuto",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PROSPECT_API_URL }}/v1/outbox/claim",
+        "options": {
+          "timeout": 30000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.PROSPECT_API_KEY }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "topic",
+              "value": "notify_human"
+            },
+            {
+              "name": "limit",
+              "value": "10"
+            }
+          ]
+        }
+      },
+      "id": "f1904eae-72a2-58f3-a073-522372a0acff",
+      "name": "Reservar avisos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        250,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normaliza a resposta da API (lista) em um item por registro, com ou sem split automatico do n8n\nconst out = [];\nfor (const it of $input.all()) {\n  const j = it.json;\n  if (Array.isArray(j)) j.forEach(r => out.push({ json: r })); else if (j && j.id) out.push({ json: j });\n}\nreturn out;"
+      },
+      "id": "2ee52d83-6639-58f3-8fc4-e49cb872c62f",
+      "name": "Eventos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.NOTIFY_WEBHOOK_URL }}",
+        "options": {
+          "timeout": 30000
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: $json.payload.text, content: $json.payload.text }) }}"
+      },
+      "id": "6c20e574-d953-544c-b5df-fa487ff093e3",
+      "name": "Enviar ao canal",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        750,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PROSPECT_API_URL }}/v1/outbox/{{ $('Eventos').item.json.id }}/ack",
+        "options": {
+          "timeout": 30000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.PROSPECT_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ success: true }) }}"
+      },
+      "id": "03bb0af8-8cac-5f3d-a3b0-c820377e363b",
+      "name": "Confirmar envio",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1000,
+        -50
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PROSPECT_API_URL }}/v1/outbox/{{ $('Eventos').item.json.id }}/ack",
+        "options": {
+          "timeout": 30000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.PROSPECT_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ success: false, error: 'falha ao enviar ao canal de avisos' }) }}"
+      },
+      "id": "d71397c5-938d-5735-bd1d-72b3cb1073ea",
+      "name": "Registrar falha",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1000,
+        100
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    }
+  ],
+  "connections": {
+    "A cada minuto": {
+      "main": [
+        [
+          {
+            "node": "Reservar avisos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reservar avisos": {
+      "main": [
+        [
+          {
+            "node": "Eventos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eventos": {
+      "main": [
+        [
+          {
+            "node": "Enviar ao canal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar ao canal": {
+      "main": [
+        [
+          {
+            "node": "Confirmar envio",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Registrar falha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Sao_Paulo",
+    "errorWorkflow": "WF00ErrorHdlr001"
+  },
+  "pinData": {}
+}

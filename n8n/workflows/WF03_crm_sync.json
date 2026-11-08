@@ -1,0 +1,143 @@
+{
+  "id": "WF03CrmSync00001",
+  "name": "WF03 - CRM Sync",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 3 * * *"
+            }
+          ]
+        }
+      },
+      "id": "fe3856f2-b586-537b-8d70-599e4d7bbcd9",
+      "name": "Diario 03:30",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PROSPECT_API_URL }}/v1/crm/housekeeping",
+        "options": {
+          "timeout": 120000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.PROSPECT_API_KEY }}"
+            }
+          ]
+        }
+      },
+      "id": "1dbcf257-cb3f-5ef1-9eff-453654f06c9c",
+      "name": "Manutencao do CRM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        250,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "const r = $input.first().json;\nconst total = Object.values(r).reduce((a, b) => a + b, 0);\nif (total === 0) return [];\nconst day = new Date().toISOString().slice(0, 10);\nreturn [{ json: {\n  topic: 'notify_human',\n  payload: { kind: 'housekeeping', text: `Manutencao CRM: ${r.expired_opportunities} propostas expiradas, ${r.closed_conversations} conversas encerradas, ${r.lost_leads} leads inativos -> perdidos, ${r.requeued_outbox} eventos reenfileirados.` },\n  idempotency_key: `housekeeping-${day}`,\n}}];"
+      },
+      "id": "1a4bfb19-0145-57d3-9ba0-0243b0e7f79f",
+      "name": "Resumo se houve mudanca",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PROSPECT_API_URL }}/v1/outbox",
+        "options": {
+          "timeout": 30000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.PROSPECT_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "5c771cbd-b8c7-5e77-8202-fdb6ce4131ed",
+      "name": "Enfileirar resumo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        750,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    }
+  ],
+  "connections": {
+    "Diario 03:30": {
+      "main": [
+        [
+          {
+            "node": "Manutencao do CRM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manutencao do CRM": {
+      "main": [
+        [
+          {
+            "node": "Resumo se houve mudanca",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resumo se houve mudanca": {
+      "main": [
+        [
+          {
+            "node": "Enfileirar resumo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Sao_Paulo",
+    "errorWorkflow": "WF00ErrorHdlr001"
+  },
+  "pinData": {}
+}

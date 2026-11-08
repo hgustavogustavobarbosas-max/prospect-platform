@@ -1,0 +1,152 @@
+{
+  "id": "WF07Delivery0001",
+  "name": "WF07 - Delivery",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/30 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "768e5cc9-0e55-5235-8ca5-89b7d92af75e",
+      "name": "A cada 30 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.PROSPECT_API_URL }}/v1/opportunities",
+        "options": {
+          "timeout": 30000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.PROSPECT_API_KEY }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "accepted"
+            },
+            {
+              "name": "limit",
+              "value": "50"
+            }
+          ]
+        }
+      },
+      "id": "f303ba35-ce8c-5711-b7ed-7c45acbfc79a",
+      "name": "Propostas aceitas",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        250,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normaliza a resposta da API (lista) em um item por registro, com ou sem split automatico do n8n\nconst out = [];\nfor (const it of $input.all()) {\n  const j = it.json;\n  if (Array.isArray(j)) j.forEach(r => out.push({ json: r })); else if (j && j.id) out.push({ json: j });\n}\nreturn out;"
+      },
+      "id": "c4196fb5-13c4-5ae0-bfc7-5387383d209d",
+      "name": "Lista",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PROSPECT_API_URL }}/v1/opportunities/{{ $json.id }}/kickoff",
+        "options": {
+          "timeout": 30000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.PROSPECT_API_KEY }}"
+            }
+          ]
+        }
+      },
+      "id": "e06b90c3-7df5-51de-8498-79535ea622d0",
+      "name": "Garantir briefing (idempotente)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        750,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    }
+  ],
+  "connections": {
+    "A cada 30 min": {
+      "main": [
+        [
+          {
+            "node": "Propostas aceitas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Propostas aceitas": {
+      "main": [
+        [
+          {
+            "node": "Lista",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lista": {
+      "main": [
+        [
+          {
+            "node": "Garantir briefing (idempotente)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Sao_Paulo",
+    "errorWorkflow": "WF00ErrorHdlr001"
+  },
+  "pinData": {}
+}

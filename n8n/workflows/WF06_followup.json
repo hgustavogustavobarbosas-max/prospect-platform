@@ -1,0 +1,176 @@
+{
+  "id": "WF06Followup0001",
+  "name": "WF06 - Follow-up",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9-17 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "ac4f23a9-768f-5cb7-80c2-c1a69aa391f8",
+      "name": "Seg-Sex 09-17h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.PROSPECT_API_URL }}/v1/followups/due",
+        "options": {
+          "timeout": 30000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.PROSPECT_API_KEY }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "20"
+            }
+          ]
+        }
+      },
+      "id": "1973a8b7-d279-5c68-ab27-1c8d9858cb6c",
+      "name": "Quem precisa de follow-up",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        250,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normaliza a resposta da API (lista) em um item por registro, com ou sem split automatico do n8n\nconst out = [];\nfor (const it of $input.all()) {\n  const j = it.json;\n  if (Array.isArray(j)) j.forEach(r => out.push({ json: r })); else if (j && j.lead_id) out.push({ json: j });\n}\nreturn out;"
+      },
+      "id": "3bbd5d77-02f5-5c0e-8e3c-4852088f42c1",
+      "name": "Lista",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().map(i => ({ json: {\n  topic: 'send_whatsapp_template',\n  payload: { lead_id: i.json.lead_id, template: i.json.template, attempt: i.json.attempt },\n  idempotency_key: i.json.idempotency_key,\n}}));"
+      },
+      "id": "ec692922-44ef-5441-811e-e636f73345cf",
+      "name": "Montar envio",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        750,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PROSPECT_API_URL }}/v1/outbox",
+        "options": {
+          "timeout": 30000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.PROSPECT_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "435bc989-6f89-585d-b435-c2e5cb688150",
+      "name": "Enfileirar follow-up",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1000,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    }
+  ],
+  "connections": {
+    "Seg-Sex 09-17h": {
+      "main": [
+        [
+          {
+            "node": "Quem precisa de follow-up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Quem precisa de follow-up": {
+      "main": [
+        [
+          {
+            "node": "Lista",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lista": {
+      "main": [
+        [
+          {
+            "node": "Montar envio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar envio": {
+      "main": [
+        [
+          {
+            "node": "Enfileirar follow-up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Sao_Paulo",
+    "errorWorkflow": "WF00ErrorHdlr001"
+  },
+  "pinData": {}
+}

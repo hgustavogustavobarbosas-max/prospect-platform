@@ -1,0 +1,143 @@
+{
+  "id": "WF09WaDrain00001",
+  "name": "WF09 - WhatsApp Drain",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "* * * * *"
+            }
+          ]
+        }
+      },
+      "id": "cb00ae95-bb1d-5c22-adb5-a3dde9a613da",
+      "name": "A cada minuto",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PROSPECT_API_URL }}/v1/whatsapp/drain",
+        "options": {
+          "timeout": 120000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.PROSPECT_API_KEY }}"
+            }
+          ]
+        }
+      },
+      "id": "6ef86ba3-2ce2-541a-be8d-8fd5e6397a7b",
+      "name": "Processar entrada e saida",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        250,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "const r = $input.first().json;\nconst failed = ((r.inbound || {}).failed || 0) + ((r.outbound || {}).failed || 0);\nif (!failed) return [];\nconst hour = new Date().toISOString().slice(0, 13);\nreturn [{ json: {\n  topic: 'notify_human',\n  payload: { kind: 'whatsapp_drain', text: `WhatsApp: ${failed} mensagem(ns) com falha no processamento (veja os logs e o outbox).` },\n  idempotency_key: `wa-drain-failed-${hour}`,\n}}];"
+      },
+      "id": "382adb2d-73e0-5ac7-8145-3fd769b2ba87",
+      "name": "Falhas?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PROSPECT_API_URL }}/v1/outbox",
+        "options": {
+          "timeout": 30000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.PROSPECT_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "8d687c5c-f965-524d-a718-ff818e681cf7",
+      "name": "Enfileirar aviso",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        750,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    }
+  ],
+  "connections": {
+    "A cada minuto": {
+      "main": [
+        [
+          {
+            "node": "Processar entrada e saida",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Processar entrada e saida": {
+      "main": [
+        [
+          {
+            "node": "Falhas?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Falhas?": {
+      "main": [
+        [
+          {
+            "node": "Enfileirar aviso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Sao_Paulo",
+    "errorWorkflow": "WF00ErrorHdlr001"
+  },
+  "pinData": {}
+}
